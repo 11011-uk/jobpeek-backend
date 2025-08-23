@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Jobs Reviewer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">Jobs Reviewer</div>
+      <div class="meta">
+        <span id="visited-count" class="pill">Visited: 0</span>
+      </div>
+    </header>
+
+    <main class="card">
+      <div class="row space">
+        <h1 id="job-title">Loading…</h1>
+        <div class="btn-group">
+          <button id="prev-btn" class="btn ghost" title="Previous job">← Prev</button>
+          <button id="next-btn" class="btn primary" title="Next job">Next →</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="grid-col">
+          <div class="field">
+            <label>Company</label>
+            <div id="job-company" class="value">—</div>
+          </div>
+          <div class="field">
+            <label>Location</label>
+            <div id="job-location" class="value">—</div>
+          </div>
+        </div>
+
+        <div class="grid-col">
+          <div class="field">
+            <label>Apply URL</label>
+            <div class="value row">
+              <a id="job-url" href="#" target="_blank" rel="noopener noreferrer">—</a>
+              <button class="btn tiny" onclick="copyText('job-url')">Copy URL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Description</label>
+        <pre id="job-description" class="desc">—</pre>
+        <div class="row right">
+          <button class="btn tiny" onclick="copyText('job-description')">Copy Description</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <small>Tip: use the buttons to navigate. Already-opened jobs are skipped.</small>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
