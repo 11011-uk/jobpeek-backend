@@ -4,4 +4,3 @@ python-dotenv
 openai
 bs4
 requests
-sqlite3
