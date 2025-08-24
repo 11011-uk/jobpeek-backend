@@ -130,6 +130,16 @@ def ensure_url_field(job_dict: Dict[str, Any]):
 
 # ------------------ API endpoints ------------------
 
+@app.get("/jobs/count")
+def get_jobs_count():
+    """Get total count of non-hidden jobs in the database"""
+    conn = get_db_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM jobs WHERE hidden = 0")
+    count = cur.fetchone()[0]
+    conn.close()
+    return {"total": count}
+
 @app.get("/jobs")
 def list_jobs(page: int = Query(1, ge=1), limit: int = Query(50, le=200)):
     offset = (page - 1) * limit
