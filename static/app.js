@@ -130,48 +130,6 @@ function renderMarkdownToHtml(markdownText) {
   return html;
 }
 
-// AI Service Status Monitoring
-async function checkAIStatus() {
-  try {
-    const response = await fetch(`${API_BASE}/ai/status`);
-    if (response.ok) {
-      const status = await response.json();
-      updateAIStatusDisplay(status);
-    }
-  } catch (error) {
-    console.error("Failed to check AI status:", error);
-  }
-}
-
-// Update AI status display
-function updateAIStatusDisplay(status) {
-  const statusContainer = document.getElementById("ai-status");
-  if (!statusContainer) return;
-  
-  let statusHTML = '<div class="ai-status-grid">';
-  
-  for (const [modelName, info] of Object.entries(status)) {
-    const isAvailable = info.client_available && info.is_active;
-    const requestsLeft = info.requests_available;
-    
-    statusHTML += `
-      <div class="ai-model-status ${isAvailable ? 'available' : 'unavailable'}">
-        <div class="model-name">${modelName}</div>
-        <div class="model-provider">${info.provider}</div>
-        <div class="model-status">
-          <span class="status-indicator ${isAvailable ? 'online' : 'offline'}"></span>
-          ${isAvailable ? 'Online' : 'Offline'}
-        </div>
-        <div class="model-requests">Requests: ${requestsLeft}/${info.requests_per_minute}</div>
-        <div class="model-cost">$${info.cost_per_1k_tokens}/1K tokens</div>
-      </div>
-    `;
-  }
-  
-  statusHTML += '</div>';
-  statusContainer.innerHTML = statusHTML;
-}
-
 // Enhanced job display with better formatting
 function showJob(job) {
     currentJob = job;  // This was missing - causing navigation to fail
