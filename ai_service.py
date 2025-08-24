@@ -1,9 +1,7 @@
 import os
 import time
-import asyncio
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 import logging
 from dotenv import load_dotenv
 
@@ -27,7 +25,6 @@ class AIModel:
     requests_per_minute: int = 30
     is_active: bool = True
     priority: int = 1  # Lower number = higher priority
-    daily_limit: int = 14400  # Daily request limit for Gemini
 
 class RateLimiter:
     """Rate limiting per model"""
@@ -46,14 +43,6 @@ class RateLimiter:
     def record_request(self):
         """Record a request"""
         self.requests.append(time.time())
-    
-    def wait_if_needed(self):
-        """Wait if rate limit would be exceeded"""
-        if not self.can_make_request():
-            wait_time = 60 - (time.time() - self.requests[0]) + 1
-            if wait_time > 0:
-                logger.info(f"Rate limit reached, waiting {wait_time:.1f} seconds")
-                time.sleep(wait_time)
 
 class AIService:
     """AI Service with multiple model support and fallback"""
@@ -78,8 +67,7 @@ class AIService:
             temperature=0.2,
             cost_per_1k_tokens=0.0,  # Free tier
             requests_per_minute=30,
-            priority=1,
-            daily_limit=14400
+            priority=1
         ))
         
         # Secondary Model - Gemma 3 27B IT (Second Priority)
@@ -92,8 +80,7 @@ class AIService:
             temperature=0.2,
             cost_per_1k_tokens=0.0,  # Free tier
             requests_per_minute=30,
-            priority=2,
-            daily_limit=14400
+            priority=2
         ))
         
         # Third Priority - OpenRouter Mistral
@@ -276,28 +263,6 @@ Description:
                 "client_available": model.name in self.model_clients
             }
         return status
-    
-    def add_custom_model(self, model_config: AIModel):
-        """Add a custom AI model"""
-        self.models.append(model_config)
-        self.rate_limiters[model_config.name] = RateLimiter(model_config.requests_per_minute)
-        logger.info(f"✅ Added custom model: {model_config.name}")
-    
-    def disable_model(self, model_name: str):
-        """Disable a specific model"""
-        for model in self.models:
-            if model.name == model_name:
-                model.is_active = False
-                logger.info(f"✅ Disabled model: {model_name}")
-                break
-    
-    def enable_model(self, model_name: str):
-        """Enable a specific model"""
-        for model in self.models:
-            if model.name == model_name:
-                model.is_active = True
-                logger.info(f"✅ Enabled model: {model_name}")
-                break
 
 # Global AI service instance
 ai_service = AIService()
@@ -311,29 +276,3 @@ def call_gpt_format(title: str, company: str, location: str, description: str) -
 def get_ai_status() -> Dict[str, Dict]:
     """Get AI service status"""
     return ai_service.get_model_status()
-
-if __name__ == "__main__":
-    # Test the AI service
-    print("🤖 AI Service Test")
-    print("=" * 50)
-    
-    # Show available models
-    print("\n📋 Available Models:")
-    for model in ai_service.get_available_models():
-        print(f"  • {model.name} ({model.provider}) - Priority: {model.priority}")
-    
-    # Show model status
-    print("\n📊 Model Status:")
-    status = ai_service.get_model_status()
-    for model_name, info in status.items():
-        print(f"  • {model_name}: {'✅' if info['client_available'] else '❌'} - Requests: {info['requests_available']}")
-    
-    # Test formatting
-    print("\n🧪 Testing Formatting:")
-    test_result = call_gpt_format(
-        "Software Engineer",
-        "Tech Corp",
-        "San Francisco, CA",
-        "We are looking for a talented software engineer..."
-    )
-    print(f"Result: {test_result[:100]}...")
