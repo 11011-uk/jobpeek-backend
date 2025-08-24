@@ -2,16 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Jobs Reviewer</title>
+  <title>JobPeek - AI-Powered Job Viewer</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Professional job viewing platform with AI-powered formatting" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="wrap">
     <header class="topbar">
-      <div class="brand">Jobs Reviewer</div>
+      <div class="brand">JobPeek</div>
       <div class="meta">
-        <span id="visited-count" class="pill">Visited: 0</span>
+        <div class="pill">
+          <input type="number" id="visitedInput" placeholder="Job #" min="1" class="visited-input" aria-label="Enter job number to navigate to">
+          <button onclick="goToVisitedJob()" class="btn btn-tiny" aria-label="Go to specified job">Go</button>
+        </div>
+        <div class="pill">
+          <span id="jobCounter" aria-label="Current job position">0 / 0</span>
+        </div>
       </div>
     </header>
 
@@ -19,8 +29,8 @@
       <div class="row space">
         <h1 id="job-title">Loading…</h1>
         <div class="btn-group">
-          <button id="prev-btn" class="btn ghost" title="Previous job">← Prev</button>
-          <button id="next-btn" class="btn primary" title="Next job">Next →</button>
+          <button id="prev-btn" class="btn ghost" title="Previous job" aria-label="Go to previous job">← Previous</button>
+          <button id="next-btn" class="btn primary" title="Next job" aria-label="Go to next job">Next →</button>
         </div>
       </div>
 
@@ -40,24 +50,24 @@
           <div class="field">
             <label>Apply URL</label>
             <div class="value row">
-              <a id="job-url" href="#" target="_blank" rel="noopener noreferrer">—</a>
-              <button class="btn tiny" onclick="copyText('job-url')">Copy URL</button>
+              <a id="job-url" href="#" target="_blank" rel="noopener noreferrer" aria-label="Job application URL">—</a>
+              <button class="btn tiny" onclick="copyText('job-url')" aria-label="Copy job URL">Copy URL</button>
             </div>
           </div>
         </div>
       </div>
 
       <div class="field">
-        <label>Description</label>
-        <pre id="job-description" class="desc">—</pre>
+        <label>Job Description</label>
+        <pre id="job-description" class="desc" aria-label="Formatted job description">—</pre>
         <div class="row right">
-          <button class="btn tiny" onclick="copyText('job-description')">Copy Description</button>
+          <button class="btn tiny" onclick="copyText('job-description')" aria-label="Copy job description with formatting">Copy Description</button>
         </div>
       </div>
     </main>
 
     <footer class="footer">
-      <small>Tip: use the buttons to navigate. Already-opened jobs are skipped.</small>
+      <small>Powered by AI • Built with FastAPI & Modern Web Technologies</small>
     </footer>
   </div>
 
