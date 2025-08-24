@@ -1,6 +1,17 @@
+# Core FastAPI Backend Dependencies
 fastapi
 uvicorn
 python-dotenv
+
+# AI Service Dependencies
 openai
+google-generativeai
+
+# HTML Processing
 bs4
-requests
+
+# Optional: Scraping Dependencies (only needed for local job scraping)
+# requests
+# aiohttp
+# selenium
+# webdriver-manager
