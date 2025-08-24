@@ -1,4 +1,3 @@
-# main.py
 import os
 import sqlite3
 import time
@@ -13,6 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
+# Import the new AI service
+from ai_service import ai_service, call_gpt_format
+
 # optional html -> text helper
 try:
     from bs4 import BeautifulSoup
@@ -20,43 +22,9 @@ try:
 except Exception:
     _HAS_BS4 = False
 
-# --- OpenRouter setup (OpenAI-compatible API for free Mistral model) ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # set this environment variable
-_OPENAI_OK = False
-_USE_NEW_OPENAI = False
-_openai_client = None
-
-if OPENAI_API_KEY:
-    try:
-        from openai import OpenAI
-        # Use OpenRouter endpoint with OpenAI-compatible client
-        _openai_client = OpenAI(
-            api_key=OPENAI_API_KEY,
-            base_url="https://openrouter.ai/api/v1"  # OpenRouter endpoint
-        )
-        _USE_NEW_OPENAI = True
-        _OPENAI_OK = True
-        print(f"[GPT] OpenRouter client initialized successfully with Mistral model")
-    except Exception as e:
-        print(f"[GPT] OpenRouter client failed: {e}")
-        try:
-            import openai
-            openai.api_key = OPENAI_API_KEY
-            openai.api_base = "https://openrouter.ai/api/v1"  # OpenRouter endpoint
-            _openai_client = openai
-            _USE_NEW_OPENAI = False
-            _OPENAI_OK = True
-            print(f"[GPT] OpenRouter client initialized with classic client")
-        except Exception as e2:
-            print(f"[GPT] Classic OpenRouter client also failed: {e2}")
-            _OPENAI_OK = False
-else:
-    print("[GPT] No OPENAI_API_KEY found in environment variables")
-    _OPENAI_OK = False
-
 DB_PATH = "jobs.db"
 
-app = FastAPI(title="Job Scraper API", version="2.2.0 (OpenRouter + Mistral)")
+app = FastAPI(title="Job Scraper API", version="3.0.0 (Multi-AI Service)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -97,6 +65,8 @@ def ensure_schema():
         to_add.append("ALTER TABLE jobs ADD COLUMN formatted_at TEXT;")
     if "formatted_model" not in cols:
         to_add.append("ALTER TABLE jobs ADD COLUMN formatted_model TEXT;")
+    if "hidden" not in cols:
+        to_add.append("ALTER TABLE jobs ADD COLUMN hidden INTEGER DEFAULT 0;")
     for sql in to_add:
         try:
             cur.execute(sql)
@@ -107,76 +77,25 @@ def ensure_schema():
 
 ensure_schema()
 
-# GPT call with retries + simple backoff
-def call_gpt_format(title: str, company: str, location: str, raw_description: str, max_retries: int = 3) -> str:
+# Updated GPT call using AI service
+def call_gpt_format_with_service(title: str, company: str, location: str, raw_description: str) -> str:
     base = clean_html_to_text(raw_description or "")
     if not base:
-        print(f"[GPT] No description text to format")
+        print(f"[AI] No description text to format")
         return ""
     
-    if not _OPENAI_OK:
-        print(f"[GPT] OpenRouter not available, returning raw description")
+    print(f"[AI] Formatting job: {title[:50]}... at {company}")
+    
+    try:
+        formatted_text, model_used, cost = ai_service.format_job_description(title, company, location, base)
+        print(f"[AI] Successfully formatted with {model_used} (Cost: ${cost:.4f})")
+        return formatted_text
+    except Exception as e:
+        print(f"[AI] Error in AI service: {e}")
         return base
 
-    print(f"[GPT] Formatting job: {title[:50]}... at {company}")
-
-    prompt = f"""Reformat this job posting. Start with the job title on its own line, followed by these sections: Job Overview, Key Benefits, Qualifications, Responsibilities.
-
-Title: {title or ''}
-Company: {company or ''}
-Location: {location or ''}
-Description:
-{base}
-"""
-
-    attempt = 0
-    backoff = 1.0
-    while attempt < max_retries:
-        attempt += 1
-        try:
-            if _USE_NEW_OPENAI:
-                resp = _openai_client.chat.completions.create(
-                    model="mistralai/mistral-small-3.2-24b-instruct:free",
-                    messages=[
-                        {"role":"system","content":"You are an expert HR assistant. Keep outputs concise."},
-                        {"role":"user","content":prompt}
-                    ],
-                    temperature=0.2,
-                    max_tokens=3000
-                )
-                content = ""
-                try:
-                    content = resp.choices[0].message.content
-                except Exception:
-                    content = getattr(resp.choices[0], "message", {}).get("content", "")
-            else:
-                resp = _openai_client.ChatCompletion.create(
-                    model="mistralai/mistral-small-3.2-24b-instruct:free",
-                    messages=[
-                        {"role":"system","content":"You are an expert HR assistant. Keep outputs concise."},
-                        {"role":"user","content":prompt}
-                    ],
-                    temperature=0.2,
-                    max_tokens=3000
-                )
-                try:
-                    content = resp.choices[0].message.content
-                except Exception:
-                    content = resp["choices"][0]["message"]["content"]
-            if content:
-                print(f"[GPT] Successfully formatted job description with Mistral")
-                return content.strip()
-        except Exception as e:
-            print(f"[GPT] attempt {attempt} failed: {e}")
-            time.sleep(backoff)
-            backoff *= 2
-            continue
-    
-    print(f"[GPT] All attempts failed, returning raw description")
-    return base
-
 # helper: persist formatted text into DB (with small retry loop for 'database is locked')
-def save_formatted_to_db(entity_id: str, formatted_text: str, model_name: str = "mistral-small-3.2-24b-instruct"):
+def save_formatted_to_db(entity_id: str, formatted_text: str, model_name: str = "multi-ai-service"):
     attempts = 0
     while attempts < 3:
         attempts += 1
@@ -209,20 +128,25 @@ def ensure_url_field(job_dict: Dict[str, Any]):
         job_dict["apply_url"] = job_dict["url"]
     return job_dict
 
-# ------------------ your existing endpoints (unchanged semantics) ------------------
+# ------------------ API endpoints ------------------
 
 @app.get("/jobs")
 def list_jobs(page: int = Query(1, ge=1), limit: int = Query(50, le=200)):
     offset = (page - 1) * limit
     conn = get_db_conn()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM jobs ORDER BY rowid LIMIT ? OFFSET ?", (limit, offset))
+    cur.execute("SELECT * FROM jobs WHERE hidden = 0 ORDER BY rowid LIMIT ? OFFSET ?", (limit, offset))
     rows = cur.fetchall()
     conn.close()
     out = []
     for r in rows:
         d = row_to_dict(r)
         ensure_url_field(d)
+        
+        # If formatted_description exists, use it for the description field
+        if d.get("formatted_description"):
+            d["description"] = d["formatted_description"]
+        
         out.append(d)
     return out
 
@@ -245,7 +169,7 @@ def get_job(entity_id: str):
         return job
 
     # synchronous formatting (blocks until formatted or fallback)
-    formatted = call_gpt_format(job.get("title",""), job.get("company",""), job.get("location",""), job.get("description",""))
+    formatted = call_gpt_format_with_service(job.get("title",""), job.get("company",""), job.get("location",""), job.get("description",""))
     # attempt to persist (best-effort)
     saved = save_formatted_to_db(entity_id, formatted)
     # return formatted (whether saved or not) AND update the job object
@@ -262,7 +186,7 @@ def get_next_job(current_id: str):
     if not r:
         conn.close()
         raise HTTPException(status_code=404, detail="Current job not found")
-    cur.execute("SELECT * FROM jobs WHERE rowid > ? ORDER BY rowid ASC LIMIT 1", (r["rowid"],))
+    cur.execute("SELECT * FROM jobs WHERE rowid > ? AND hidden = 0 ORDER BY rowid ASC LIMIT 1", (r["rowid"],))
     n = cur.fetchone()
     conn.close()
     if not n:
@@ -274,7 +198,7 @@ def get_next_job(current_id: str):
         job["description"] = job["formatted_description"]
         return job
 
-    formatted = call_gpt_format(job.get("title",""), job.get("company",""), job.get("location",""), job.get("description",""))
+    formatted = call_gpt_format_with_service(job.get("title",""), job.get("company",""), job.get("location",""), job.get("description",""))
     save_formatted_to_db(job.get("entity_id"), formatted)
     job["description"] = formatted
     job["formatted_description"] = formatted  # CRITICAL FIX: Update the field in the job object
@@ -289,11 +213,11 @@ def get_prev_job(current_id: str):
     if not r:
         conn.close()
         raise HTTPException(status_code=404, detail="Current job not found")
-    cur.execute("SELECT * FROM jobs WHERE rowid < ? ORDER BY rowid DESC LIMIT 1", (r["rowid"],))
+    cur.execute("SELECT * FROM jobs WHERE rowid < ? AND hidden = 0 ORDER BY rowid DESC LIMIT 1", (r["rowid"],))
     p = cur.fetchone()
     conn.close()
     if not p:
-        raise HTTPException(status_code=404, detail="No previous jobs available")
+        raise HTTPException(status_code=404, detail="No previous job available")
     job = row_to_dict(p)
     ensure_url_field(job)
 
@@ -301,11 +225,16 @@ def get_prev_job(current_id: str):
         job["description"] = job["formatted_description"]
         return job
 
-    formatted = call_gpt_format(job.get("title",""), job.get("company",""), job.get("location",""), job.get("description",""))
+    formatted = call_gpt_format_with_service(job.get("title",""), job.get("company",""), job.get("location",""), job.get("description",""))
     save_formatted_to_db(job.get("entity_id"), formatted)
     job["description"] = formatted
     job["formatted_description"] = formatted  # CRITICAL FIX: Update the field in the job object
     return job
+
+@app.get("/ai/status")
+def get_ai_status():
+    """Get AI service status and model information"""
+    return ai_service.get_model_status()
 
 # serve static files (unchanged)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
