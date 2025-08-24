@@ -229,28 +229,17 @@ async function loadFirstJob() {
     try {
         console.log('🔄 Loading first job...');
         
-        // First get total count - use valid limit of 200
-        const countResponse = await fetch(`${API_BASE}/jobs?page=1&limit=200`);
+        // First get total count using the dedicated count endpoint
+        const countResponse = await fetch(`${API_BASE}/jobs/count`);
         if (!countResponse.ok) {
             const errorText = await countResponse.text();
             console.error('❌ Count response error:', countResponse.status, errorText);
             throw new Error(`HTTP ${countResponse.status}: ${countResponse.statusText}`);
         }
         
-        // Check if response is JSON
-        const contentType = countResponse.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const responseText = await countResponse.text();
-            console.error('❌ Non-JSON response:', contentType, responseText);
-            throw new Error('Server returned non-JSON response');
-        }
-        
         const countData = await countResponse.json();
-        console.log('📊 Count response:', countData);
-        
-        // The API returns an array directly, not {jobs: [...]}
-        totalJobs = countData.filter(job => !job.hidden).length;
-        console.log(`📋 Total jobs found: ${totalJobs}`);
+        totalJobs = countData.total;
+        console.log(`📋 Total jobs in database: ${totalJobs}`);
         
         // Then get first job
         const response = await fetch(`${API_BASE}/jobs?page=1&limit=1`);
@@ -362,7 +351,7 @@ function goToVisitedJob() {
         return;
     }
     
-    // Load the specific job by index
+    // Load the specific job by index (convert to 0-based index)
     loadJobByIndex(jobNumber - 1);
 }
 
@@ -370,38 +359,45 @@ async function loadJobByIndex(index) {
     try {
         console.log(`🔄 Loading job by index: ${index}`);
         
-        const response = await fetch(`${API_BASE}/jobs?page=1&limit=200`);
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Load by index error:', response.status, errorText);
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // First get total count using the dedicated count endpoint
+        const countResponse = await fetch(`${API_BASE}/jobs/count`);
+        if (!countResponse.ok) {
+            throw new Error(`Failed to get job count: ${countResponse.statusText}`);
         }
         
-        // Check if response is JSON
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const responseText = await response.text();
-            console.error('❌ Non-JSON response:', contentType, responseText);
-            throw new Error('Server returned non-JSON response');
+        const countData = await countResponse.json();
+        totalJobs = countData.total;
+        console.log(`📋 Total jobs in database: ${totalJobs}`);
+        
+        if (index < 0 || index >= totalJobs) {
+            showCopyError(`Job number ${index + 1} not found. Total jobs: ${totalJobs}`);
+            console.log(`⚠️ Job index ${index} out of range. Total: ${totalJobs}`);
+            return;
+        }
+        
+        // Calculate which page contains this job index
+        const page = Math.floor(index / 200) + 1;
+        const offset = index % 200;
+        
+        console.log(`📄 Loading from page ${page}, offset ${offset}`);
+        
+        const response = await fetch(`${API_BASE}/jobs?page=${page}&limit=200`);
+        if (!response.ok) {
+            throw new Error(`Failed to load jobs: ${response.statusText}`);
         }
         
         const data = await response.json();
-        console.log('📄 Load by index response:', data);
+        console.log(`📄 Page ${page} response: ${data.length} jobs`);
         
-        // The API returns an array directly, not {jobs: [...]}
-        const jobs = data.filter(job => !job.hidden);
-        totalJobs = jobs.length;
-        console.log(`📋 Total jobs found: ${totalJobs}`);
-        
-        if (index >= 0 && index < jobs.length) {
+        if (offset < data.length) {
             currentJobIndex = index;
-            showJob(jobs[index]);
+            showJob(data[offset]);
             updateJobCounter();
             document.getElementById('visitedInput').value = ''; // Clear input after use
             console.log(`✅ Job ${index + 1} loaded successfully`);
         } else {
-            showCopyError(`Job number ${index + 1} not found. Total jobs: ${totalJobs}`);
-            console.log(`⚠️ Job index ${index} out of range. Total: ${totalJobs}`);
+            showCopyError(`Job number ${index + 1} not found on page ${page}`);
+            console.log(`⚠️ Job offset ${offset} out of range for page ${page}`);
         }
     } catch (error) {
         console.error('❌ Error loading job by index:', error);
