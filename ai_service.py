@@ -20,13 +20,14 @@ class AIModel:
     provider: str
     model_id: str
     api_key_env: str
-    base_url: str
-    max_tokens: int
-    temperature: float
-    cost_per_1k_tokens: float
-    requests_per_minute: int
+    base_url: str = ""
+    max_tokens: int = 3000
+    temperature: float = 0.2
+    cost_per_1k_tokens: float = 0.0
+    requests_per_minute: int = 30
     is_active: bool = True
     priority: int = 1  # Lower number = higher priority
+    daily_limit: int = 14400  # Daily request limit for Gemini
 
 class RateLimiter:
     """Rate limiting per model"""
@@ -67,7 +68,35 @@ class AIService:
     def initialize_models(self):
         """Initialize available AI models"""
         
-        # Primary Model (OpenRouter + Mistral)
+        # Primary Model - Gemma 3 27B IT (First Priority)
+        self.models.append(AIModel(
+            name="Gemma 3 27B IT (Primary)",
+            provider="Google",
+            model_id="gemma-3-27b-it",
+            api_key_env="GEMINI_API_KEY_1",
+            max_tokens=3000,
+            temperature=0.2,
+            cost_per_1k_tokens=0.0,  # Free tier
+            requests_per_minute=30,
+            priority=1,
+            daily_limit=14400
+        ))
+        
+        # Secondary Model - Gemma 3 27B IT (Second Priority)
+        self.models.append(AIModel(
+            name="Gemma 3 27B IT (Secondary)",
+            provider="Google",
+            model_id="gemma-3-27b-it",
+            api_key_env="GEMINI_API_KEY_2",
+            max_tokens=3000,
+            temperature=0.2,
+            cost_per_1k_tokens=0.0,  # Free tier
+            requests_per_minute=30,
+            priority=2,
+            daily_limit=14400
+        ))
+        
+        # Third Priority - OpenRouter Mistral
         self.models.append(AIModel(
             name="Mistral Small 3.2",
             provider="OpenRouter",
@@ -78,10 +107,10 @@ class AIService:
             temperature=0.2,
             cost_per_1k_tokens=0.0,  # Free tier
             requests_per_minute=30,
-            priority=1
+            priority=3
         ))
         
-        # Alternative OpenRouter Model (if available)
+        # Fourth Priority - Alternative OpenRouter Model
         self.models.append(AIModel(
             name="Mistral Small 3.1",
             provider="OpenRouter",
@@ -92,7 +121,7 @@ class AIService:
             temperature=0.2,
             cost_per_1k_tokens=0.0,  # Free tier
             requests_per_minute=25,
-            priority=2
+            priority=4
         ))
         
         # Initialize rate limiters
@@ -102,6 +131,7 @@ class AIService:
     def initialize_clients(self):
         """Initialize API clients for each model"""
         try:
+            # Initialize OpenAI/OpenRouter clients
             from openai import OpenAI
             for model in self.models:
                 if model.provider in ["OpenRouter", "OpenAI"]:
@@ -114,6 +144,23 @@ class AIService:
                         logger.info(f"✅ Initialized client for {model.name}")
         except ImportError:
             logger.warning("OpenAI client not available")
+        
+        try:
+            # Initialize Gemini clients
+            import google.generativeai as genai
+            for model in self.models:
+                if model.provider == "Google":
+                    api_key = os.getenv(model.api_key_env)
+                    if api_key:
+                        # Create a separate client instance for each model
+                        # We'll store both the model and API key to use later
+                        self.model_clients[model.name] = {
+                            'model': model.model_id,
+                            'api_key': api_key
+                        }
+                        logger.info(f"✅ Initialized Gemini client for {model.name}")
+        except ImportError:
+            logger.warning("Google Generative AI client not available")
     
     def get_available_models(self) -> List[AIModel]:
         """Get list of available models sorted by priority"""
@@ -196,6 +243,20 @@ Description:
                     messages=[{"role": "user", "content": prompt}]
                 )
                 return response.content[0].text.strip()
+            
+            elif model.provider == "Google":
+                client_info = self.model_clients[model.name]
+                api_key = client_info['api_key']
+                model_id = client_info['model']
+                
+                # Configure Gemini with this specific API key
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                
+                # Create a system prompt for Gemini
+                full_prompt = f"You are an expert HR assistant. Keep outputs concise.\n\n{prompt}"
+                response = genai.GenerativeModel(model_id).generate_content(full_prompt)
+                return response.text.strip()
                 
         except Exception as e:
             logger.error(f"Error calling {model.name}: {str(e)}")
