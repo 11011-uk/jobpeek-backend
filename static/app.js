@@ -7,36 +7,6 @@ let currentJobIndex = 0;
 function copyText(elementId) {
   const el = document.getElementById(elementId);
   
-  if (elementId === "job-description") {
-    // Enhanced HTML copying for job descriptions
-    try {
-      // Method 1: Try modern clipboard API with HTML
-      if (navigator.clipboard && window.ClipboardItem) {
-        const htmlBlob = new Blob([el.innerHTML], { type: 'text/html' });
-        const textBlob = new Blob([el.innerText], { type: 'text/plain' });
-        
-        const clipboardItem = new ClipboardItem({
-          'text/html': htmlBlob,
-          'text/plain': textBlob
-        });
-        
-        navigator.clipboard.write([clipboardItem]).then(() => {
-          showCopySuccess("Description copied with formatting!");
-        }).catch(() => {
-          // Fallback to selection method
-          fallbackCopyHTML(el);
-        });
-      } else {
-        // Fallback for older browsers
-        fallbackCopyHTML(el);
-      }
-    } catch (err) {
-      console.error("Error copying HTML:", err);
-      fallbackCopyHTML(el);
-    }
-    return;
-  }
-  
   // For other elements (URL, etc.), copy as plain text
   const textToCopy = el.tagName === "A" ? el.href : el.innerText;
   navigator.clipboard.writeText(textToCopy)
@@ -48,23 +18,52 @@ function copyText(elementId) {
     });
 }
 
-// Fallback HTML copying method
-function fallbackCopyHTML(element) {
-  const range = document.createRange();
-  range.selectNodeContents(element);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
-  
-  try {
-    document.execCommand("copy");
-    showCopySuccess("Description copied!");
-  } catch (err) {
-    console.error("Fallback copy failed:", err);
-    showCopyError("Copy failed. Please select and copy manually.");
+
+
+
+function copyDescription() {
+  const descriptionElement = document.getElementById('job-description');
+  if (!descriptionElement || !currentJob) {
+    showCopyError("No job description available to copy");
+    return;
   }
+
+  // Get the raw description text (before HTML rendering)
+  let rawDescription = currentJob.description || "";
   
-  selection.removeAllRanges();
+  if (!rawDescription.trim()) {
+    showCopyError("No job description available to copy");
+    return;
+  }
+
+  try {
+    // Convert bullet points and remove markdown formatting
+    let formatted = rawDescription
+      // Convert - bullets to bullet points
+      .replace(/^- (.*)/gm, (_, li) => "• " + li)
+      // Convert * bullets to bullet points  
+      .replace(/^\* (.*)/gm, (_, li) => "• " + li)
+      // Remove markdown bold formatting (**text** -> text)
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      // Remove markdown italic formatting (*text* -> text)
+      .replace(/\*(.*?)\*/g, '$1')
+      .trim();
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(formatted)
+      .then(() => {
+        showCopySuccess("Description copied!");
+      })
+      .catch(err => {
+        console.error("Error copying to clipboard:", err);
+        // Fallback method
+        fallbackCopyText(formatted);
+      });
+
+  } catch (err) {
+    console.error("Error formatting description:", err);
+    showCopyError("Error copying description");
+  }
 }
 
 // Fallback text copying method
